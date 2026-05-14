@@ -72,11 +72,21 @@ async def delegate(
             params=MessageSendParams(message=message),
         )
 
-        logger.debug(
-            "Delegating to %s (depth=%d, trace=%s)", endpoint, depth, trace_id
+        logger.info(
+            "A2A delegate request | endpoint=%s depth=%d trace=%s context=%s",
+            endpoint,
+            depth,
+            trace_id,
+            context_id,
         )
 
         response = await client.send_message(request)
+        logger.info(
+            "A2A delegate response | endpoint=%s depth=%d trace=%s",
+            endpoint,
+            depth,
+            trace_id,
+        )
 
         # Extract text from SendMessageResponse
         return _extract_text(response)

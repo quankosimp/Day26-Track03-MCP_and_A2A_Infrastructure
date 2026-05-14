@@ -13,6 +13,8 @@ import json
 import logging
 from typing import Annotated, TypedDict
 
+import httpx
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.constants import Send
 from langgraph.graph import END, StateGraph
@@ -45,6 +47,22 @@ class LawState(TypedDict):
     tax_result: Annotated[str, _last_wins]
     compliance_result: Annotated[str, _last_wins]
     final_answer: str
+
+
+def _subagent_unavailable_message(agent_name: str, exc: Exception) -> str:
+    """Create user-facing fallback text when a delegated sub-agent is unavailable."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code if exc.response is not None else None
+        req_url = str(exc.request.url) if exc.request is not None else ""
+        if status == 404 and "/discover/" in req_url:
+            return (
+                f"[{agent_name} analysis unavailable: registry could not discover an online "
+                f"{agent_name} service for this task.]"
+            )
+        return f"[{agent_name} analysis unavailable: upstream returned HTTP {status}.]"
+    if isinstance(exc, httpx.HTTPError):
+        return f"[{agent_name} analysis unavailable: network error while calling sub-agent.]"
+    return f"[{agent_name} analysis unavailable: {exc}]"
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +155,16 @@ async def call_tax(state: LawState) -> dict:
     from common.a2a_client import delegate
     from common.registry_client import discover
 
+    logger.info(
+        "LawAgent -> TaxAgent | trace=%s context=%s depth=%d",
+        state["trace_id"],
+        state["context_id"],
+        state.get("delegation_depth", 0) + 1,
+    )
+
     try:
         endpoint = await discover("tax_question")
+        logger.info("LawAgent discovered TaxAgent endpoint=%s", endpoint)
         result = await delegate(
             endpoint=endpoint,
             question=state["question"],
@@ -150,7 +176,7 @@ async def call_tax(state: LawState) -> dict:
         return {"tax_result": result}
     except Exception as exc:
         logger.exception("call_tax failed: %s", exc)
-        return {"tax_result": f"[Tax analysis unavailable: {exc}]"}
+        return {"tax_result": _subagent_unavailable_message("Tax", exc)}
 
 
 async def call_compliance(state: LawState) -> dict:
@@ -158,8 +184,16 @@ async def call_compliance(state: LawState) -> dict:
     from common.a2a_client import delegate
     from common.registry_client import discover
 
+    logger.info(
+        "LawAgent -> ComplianceAgent | trace=%s context=%s depth=%d",
+        state["trace_id"],
+        state["context_id"],
+        state.get("delegation_depth", 0) + 1,
+    )
+
     try:
         endpoint = await discover("compliance_question")
+        logger.info("LawAgent discovered ComplianceAgent endpoint=%s", endpoint)
         result = await delegate(
             endpoint=endpoint,
             question=state["question"],
@@ -171,7 +205,7 @@ async def call_compliance(state: LawState) -> dict:
         return {"compliance_result": result}
     except Exception as exc:
         logger.exception("call_compliance failed: %s", exc)
-        return {"compliance_result": f"[Compliance analysis unavailable: {exc}]"}
+        return {"compliance_result": _subagent_unavailable_message("Compliance", exc)}
 
 
 async def aggregate(state: LawState) -> dict:

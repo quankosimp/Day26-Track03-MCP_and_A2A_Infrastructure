@@ -26,8 +26,16 @@ LEGAL_KNOWLEDGE = [
             "(4) cover damages. Statute of limitations is typically 4 years (UCC § 2-725)."
         ),
     },
-    # TODO: Thêm entry về luật lao động Việt Nam
-    # Gợi ý: id="labor_law", keywords=["lao động", "sa thải", ...], text="..."
+    {
+        "id": "labor_law",
+        "keywords": ["lao động", "sa thải", "kỷ luật", "hợp đồng lao động", "tranh chấp lao động"],
+        "text": (
+            "Theo Bộ luật Lao động 2019, người sử dụng lao động chỉ được sa thải trong các trường hợp "
+            "luật định và phải tuân thủ đúng trình tự xử lý kỷ luật lao động. Người lao động có quyền "
+            "khởi kiện tranh chấp lao động cá nhân để bảo vệ quyền lợi; thời hiệu khởi kiện tại Tòa án "
+            "thường là 1 năm kể từ ngày phát hiện quyền, lợi ích hợp pháp bị xâm phạm."
+        ),
+    },
 ]
 
 
@@ -41,21 +49,36 @@ def search_legal_knowledge(query: str) -> str:
     return "Không tìm thấy thông tin liên quan."
 
 
-# TODO: Tạo tool check_statute_of_limitations
-# Gợi ý: nhận case_type (str), trả về thời hiệu khởi kiện
-# @tool
-# def check_statute_of_limitations(case_type: str) -> str:
-#     """Kiểm tra thời hiệu khởi kiện."""
-#     # YOUR CODE HERE
-#     pass
+@tool
+def check_statute_of_limitations(case_type: str) -> str:
+    """Kiểm tra thời hiệu khởi kiện theo loại vụ việc."""
+    case = case_type.lower()
+
+    if any(kw in case for kw in ["hợp đồng", "contract", "breach", "ucc"]):
+        return (
+            "Thời hiệu khởi kiện tham khảo cho tranh chấp vi phạm hợp đồng mua bán hàng hóa "
+            "(UCC § 2-725): 4 năm."
+        )
+    if any(kw in case for kw in ["lao động", "sa thải", "kỷ luật", "employment"]):
+        return (
+            "Thời hiệu khởi kiện tham khảo cho tranh chấp lao động cá nhân tại Tòa án theo Bộ luật "
+            "Lao động 2019: 1 năm kể từ ngày phát hiện quyền, lợi ích hợp pháp bị xâm phạm."
+        )
+    if any(kw in case for kw in ["trade secret", "dtsa", "bí mật kinh doanh", "nda"]):
+        return (
+            "Thời hiệu khởi kiện tham khảo cho hành vi xâm phạm bí mật kinh doanh theo DTSA: 3 năm."
+        )
+    return (
+        "Chưa có quy tắc thời hiệu cụ thể trong tool cho loại vụ việc này. "
+        "Vui lòng cung cấp rõ hơn loại tranh chấp và hệ thống pháp luật áp dụng."
+    )
 
 
 async def main():
     load_dotenv()
     llm = get_llm()
     
-    # TODO: Thêm tool mới vào danh sách
-    tools = [search_legal_knowledge]  # Thêm check_statute_of_limitations vào đây
+    tools = [search_legal_knowledge, check_statute_of_limitations]
     llm_with_tools = llm.bind_tools(tools)
     
     question = "Thời hiệu khởi kiện vụ vi phạm hợp đồng là bao lâu?"
@@ -79,7 +102,8 @@ async def main():
             
             if tool_call["name"] == "search_legal_knowledge":
                 tool_result = search_legal_knowledge.invoke(tool_call["args"])
-            # TODO: Thêm xử lý cho check_statute_of_limitations
+            elif tool_call["name"] == "check_statute_of_limitations":
+                tool_result = check_statute_of_limitations.invoke(tool_call["args"])
             
             if tool_result:
                 messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
